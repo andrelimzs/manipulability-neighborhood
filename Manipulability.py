@@ -23,10 +23,10 @@ def compute_manipulability_ellipsoid(robot, ee_link, q):
     U,S,Vh = torch.linalg.svd(J)
 
     # Broadcast multiplication along batch dim(1)
-    MI = torch.matmul(U,S.unsqueeze(-1))
+    ME = torch.matmul(U,S.unsqueeze(-1))
 
     # Return as (batch, 6)
-    return MI.squeeze()
+    return ME.squeeze()
 
 def compute_manipulability_index(robot, ee_link, q):
     """Compute manipulability index (scalar value) of given joint configurations
@@ -39,10 +39,16 @@ def compute_manipulability_index(robot, ee_link, q):
     Returns
         MI (torch.tensor): Manipulability Index    
     """
+    # Get robot jacobian
+    J_linear, J_angular = robot.compute_endeffector_jacobian(q, 'panda_virtual_ee_link')
+    J = torch.concat([J_linear, J_angular], dim=1)
+
+    # SVD
+    U,S,Vh = torch.linalg.svd(J)
+
     # Manipulability index MI = product(s_i) for all 'i's
-    # Use compute_manipulability_ellipsoid calculation (which uses SVD) because
-    #   the SVD computation is > 100x faster than the Jacobian anyway
-    MI = torch.prod(compute_manipulability_ellipsoid(robot, ee_link, q), dim=1)
+    MI = torch.prod(S, dim=1)
+
     return MI
 
 def get_neighborhood(x, mag=np.deg2rad(0.1)):
