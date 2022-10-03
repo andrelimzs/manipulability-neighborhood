@@ -16,7 +16,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Generate manipulability neighborhood dataset')
     parser.add_argument("-trainN", type=int, help="Number of samples to generate", default=1000000)
-    parser.add_argument("-validN", type=int, help="Number of samples to generate", default=20000)
+    parser.add_argument("-validN", type=int, help="Number of samples to generate", default=2000)
     args = parser.parse_args()
 
     print(f"Generating {args.trainN} training samples and {args.validN} validation samples")
