@@ -62,7 +62,7 @@ def training_loop(model, num_epochs, X_train, y_train, X_valid, y_valid):
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
     # Early stopping
-    patience = 20
+    patience = 3
     best_loss = np.inf
     num_of_worse_losses = 0
 
@@ -124,6 +124,7 @@ def training_loop(model, num_epochs, X_train, y_train, X_valid, y_valid):
     return model, train_losses, valid_losses
 
 def plot_loss_curves(train_losses, valid_losses, save_plot='loss_curve.png'):
+    fig = plt.figure(figsize=(16,9), dpi=200)
     plt.plot(train_losses)
     plt.plot(valid_losses)
     plt.title("Losses")
@@ -139,6 +140,7 @@ if __name__ == '__main__':
     parser.add_argument("-b", "--batch_size", type=int, help="Training batch size", default=32)
     parser.add_argument("-e", "--epochs", type=int, help="Number of epochs to train for", default=100)
     parser.add_argument("-m", "--model", type=str, help="Model to load", default=None)
+    parser.add_argument("-p", "--plot_loss", type=str, help="Model to load", default=True)
     args = parser.parse_args()
 
     # Read dataset
@@ -146,7 +148,7 @@ if __name__ == '__main__':
 
     # Instantiate model
     device = 'cpu'
-    depth = 4
+    depth = 8
     width = 50
     model = MLP(depth, width).to(device)
 
@@ -169,3 +171,6 @@ if __name__ == '__main__':
 
     # Save loss curve figure
     plot_loss_curves(train_losses, valid_losses)
+
+    if args.plot_loss:
+        plt.show()
