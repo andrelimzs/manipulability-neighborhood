@@ -3,6 +3,7 @@
 import numpy as np
 import time
 from tqdm import tqdm, trange
+import pickle
 
 import torch
 from torch import nn
@@ -20,6 +21,7 @@ def read_dataset(dataset, batch_size):
     y_train = torch.from_numpy(dataset['y_train'])
     X_valid = torch.from_numpy(dataset['X_valid'])
     y_valid = torch.from_numpy(dataset['y_valid'])
+    print(f"Dataset\n: Training {len(X_train)} samples | Validation {len(X_valid)} samples")
 
     # Split into batches
     X_train = torch.split(X_train, batch_size)
@@ -55,82 +57,88 @@ class MLP(nn.Module):
 def training_loop(model, num_epochs, X_train, y_train, X_valid, y_valid):
     tic = time.time()
     
-    #define the loss fn and optimizer
+    # Define loss and optimizer
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
     # Early stopping
     patience = 20
-    best_loss = 10
+    best_loss = np.inf
     num_of_worse_losses = 0
 
     # Track batch loss
     train_losses = []
     valid_losses = []
 
-    #train the neural network
+    print("Starting training")
+    # Train the neural network
     for epoch in trange(num_epochs):
         
         # for i in range(dataset_size // batch_size + 1):
         for (X,y) in zip(X_train, y_train):
             model.train()
             
-            #reset gradients
+            # Reset gradients
             optimizer.zero_grad()
             
-            #forward propagation through the network
+            # Forward propagation through the network
             out = model(X)
             
-            #calculate the loss
+            # Calculate the loss
             loss = criterion(out, y)
             
-            #track training loss
-            train_losses.append(loss.item())
             
-            #backpropagation
+            # Backpropagation
             loss.backward()
             
-            #update the parameters
+            # Update the parameters
             optimizer.step()
-            
-            if X_valid is not None:
-                with torch.no_grad():
-                    model.eval()
-                    out = model(X_valid)
-                    loss = criterion(out, y_valid)
-            
-                #track training loss
-                validation_loss = loss.item()
-                valid_losses.append(validation_loss)
-            
-            # Early stopping
-            if validation_loss > best_loss:
-                num_of_worse_losses += 1
-            else:
-                num_of_worse_losses = 0
-                best_loss = validation_loss
-            
-            if num_of_worse_losses > patience:
-                print(f"Early stopping at {epoch}")
 
-                toc = time.time() 
-                print(f"Trained for {toc-tic:.1f} s")
-                
-                return model, train_losses, valid_losses
+        
+        # Track training loss
+        train_losses.append(loss.item())
+        
+        # Track validation loss
+        with torch.no_grad():
+            model.eval()
+            out = model(X_valid)
+            loss = criterion(out, y_valid)
+
+        validation_loss = loss.item()
+        valid_losses.append(validation_loss)
+            
+        # Early stopping
+        if validation_loss > best_loss:
+            num_of_worse_losses += 1
+        else:
+            num_of_worse_losses = 0
+            best_loss = validation_loss
+        
+        if num_of_worse_losses > patience:
+            print(f"Early stopping at {epoch} ({num_of_worse_losses})")
+            break
 
     toc = time.time() 
-    print(f"Trained for {toc-tic:.1f} s")
+    print(f"Trained for {toc-tic:.0f} s")
 
     return model, train_losses, valid_losses
+
+def plot_loss_curves(train_losses, valid_losses, save_plot='loss_curve.png'):
+    plt.plot(train_losses)
+    plt.plot(valid_losses)
+    plt.title("Losses")
+    plt.grid()
+    if save_plot:
+        plt.savefig(save_plot)
 
 if __name__ == '__main__':
     # Get arguments
     import argparse
     parser = argparse.ArgumentParser(description='Generate manipulability neighborhood dataset')
     parser.add_argument("--dataset", type=str, help="Dataset to train with", default='Data/dataset.npz')
-    parser.add_argument("--batch_size", type=int, help="Training batch size", default=32)
-    parser.add_argument("--epochs", type=int, help="Number of epochs to train for", default=100)
-    parser.add_argument("--model", type=str, help="Model to load", default=None)
+    parser.add_argument("-b", "--batch_size", type=int, help="Training batch size", default=32)
+    parser.add_argument("-e", "--epochs", type=int, help="Number of epochs to train for", default=100)
+    parser.add_argument("-m", "--model", type=str, help="Model to load", default=None)
     args = parser.parse_args()
 
     # Read dataset
@@ -146,6 +154,7 @@ if __name__ == '__main__':
     if args.model:
         print(f"Loaded model from {args.model}")
         model.load_state_dict(torch.load(args.model))
+        (train_losses, valid_losses) = pickle.load(open("model.losses.p", "rb"))
 
     # Train for N epochs
     model, train_losses, valid_losses = training_loop(model, args.epochs, X_train, y_train, X_valid, y_valid)
@@ -154,3 +163,9 @@ if __name__ == '__main__':
 
     # Save model
     torch.save(model.state_dict(), "model.pt")
+
+    # Save train/valid losses as well
+    pickle.dump((train_losses, valid_losses), open("model.losses.p", "wb"))
+
+    # Save loss curve figure
+    plot_loss_curves(train_losses, valid_losses)
