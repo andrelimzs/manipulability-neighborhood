@@ -21,7 +21,7 @@ def read_dataset(dataset, batch_size):
     y_train = torch.from_numpy(dataset['y_train'])
     X_valid = torch.from_numpy(dataset['X_valid'])
     y_valid = torch.from_numpy(dataset['y_valid'])
-    print(f"Dataset\n: Training {len(X_train)} samples | Validation {len(X_valid)} samples")
+    print(f"{len(X_train)} training | {len(X_valid)} validation")
 
     # Split into batches
     X_train = torch.split(X_train, batch_size)
@@ -35,12 +35,12 @@ class MLP(nn.Module):
         super(MLP, self).__init__()
         self.input = nn.Sequential(
             nn.Linear(21, width),
-            nn.BatchNorm1d(width),
+            # nn.BatchNorm1d(width),
         )
         self.layers = nn.ModuleList([
             nn.Sequential(
                 nn.Linear(width,width),
-                nn.BatchNorm1d(width),
+                # nn.BatchNorm1d(width),
                 nn.ReLU(),
             ) for _ in range(depth)
         ])
@@ -49,26 +49,27 @@ class MLP(nn.Module):
     def forward(self, x):
         x = torch.concat([x, torch.sin(x), torch.cos(x)], dim=1)
         x = self.input(x)
-        for i, l in enumerate(self.layers):
-            x = l(x)
+        for i in range(0, len(self.layers), 2):
+            x2 = self.layers[i](x)
+            x2 = self.layers[i+1](x2)
+            x = x + x2
         x = self.output(x)
         return x.view(-1)
 
-def training_loop(model, num_epochs, X_train, y_train, X_valid, y_valid):
+def training_loop(model, num_epochs, patience,
+                  X_train, y_train, X_valid, y_valid,
+                  train_losses=[], valid_losses=[]):
     tic = time.time()
     
     # Define loss and optimizer
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    # optimizer = torch.optim.AdamW(model.parameters(), lr=0.001)
+    # optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
 
     # Early stopping
-    patience = 3
     best_loss = np.inf
     num_of_worse_losses = 0
-
-    # Track batch loss
-    train_losses = []
-    valid_losses = []
 
     print("Starting training")
     # Train the neural network
@@ -77,23 +78,16 @@ def training_loop(model, num_epochs, X_train, y_train, X_valid, y_valid):
         # for i in range(dataset_size // batch_size + 1):
         for (X,y) in zip(X_train, y_train):
             model.train()
-            
             # Reset gradients
             optimizer.zero_grad()
-            
             # Forward propagation through the network
             out = model(X)
-            
             # Calculate the loss
             loss = criterion(out, y)
-            
-            
             # Backpropagation
             loss.backward()
-            
             # Update the parameters
             optimizer.step()
-
         
         # Track training loss
         train_losses.append(loss.item())
@@ -108,15 +102,16 @@ def training_loop(model, num_epochs, X_train, y_train, X_valid, y_valid):
         valid_losses.append(validation_loss)
             
         # Early stopping
-        if validation_loss > best_loss:
-            num_of_worse_losses += 1
-        else:
-            num_of_worse_losses = 0
-            best_loss = validation_loss
-        
-        if num_of_worse_losses > patience:
-            print(f"Early stopping at {epoch} ({num_of_worse_losses})")
-            break
+        if patience > 0:
+            if validation_loss > best_loss:
+                num_of_worse_losses += 1
+            else:
+                num_of_worse_losses = 0
+                best_loss = validation_loss
+            
+            if num_of_worse_losses > patience:
+                print(f"Early stopping at {epoch} ({num_of_worse_losses})")
+                break
 
     toc = time.time() 
     print(f"Trained for {toc-tic:.0f} s")
@@ -136,30 +131,43 @@ if __name__ == '__main__':
     # Get arguments
     import argparse
     parser = argparse.ArgumentParser(description='Generate manipulability neighborhood dataset')
-    parser.add_argument("--dataset", type=str, help="Dataset to train with", default='Data/dataset.npz')
+    parser.add_argument("--data_dir", type=str, default="Data/")
+    parser.add_argument("-d", "--dataset", type=str, help="Dataset to train with", default='dataset.npz')
     parser.add_argument("-b", "--batch_size", type=int, help="Training batch size", default=32)
     parser.add_argument("-e", "--epochs", type=int, help="Number of epochs to train for", default=100)
     parser.add_argument("-m", "--model", type=str, help="Model to load", default=None)
-    parser.add_argument("-p", "--plot_loss", type=str, help="Model to load", default=True)
+    parser.add_argument("-p", "--patience", type=int, help="Early stopping patience", default=3)
+    parser.add_argument("--plot_loss", type=str, help="Model to load", default=False)
     args = parser.parse_args()
 
     # Read dataset
-    X_train, y_train, X_valid, y_valid = read_dataset(args.dataset, args.batch_size)
+    X_train, y_train, X_valid, y_valid = read_dataset(args.data_dir + args.dataset, args.batch_size)
 
     # Instantiate model
     device = 'cpu'
-    depth = 8
+    depth = 4
     width = 50
     model = MLP(depth, width).to(device)
+    print(f"depth = {depth}, width = {width}")
+
+    # Print model summary
+    print(model)
 
     # Load model if specified
     if args.model:
         print(f"Loaded model from {args.model}")
         model.load_state_dict(torch.load(args.model))
         (train_losses, valid_losses) = pickle.load(open("model.losses.p", "rb"))
+    else:
+        train_losses = []
+        valid_losses = []
 
     # Train for N epochs
-    model, train_losses, valid_losses = training_loop(model, args.epochs, X_train, y_train, X_valid, y_valid)
+    model, train_losses, valid_losses = training_loop(
+        model, args.epochs, args.patience,
+        X_train, y_train, X_valid, y_valid,
+        train_losses, valid_losses
+    )
 
     print(f"Validation loss: {valid_losses[-1]:0.1e}")
 
@@ -168,6 +176,7 @@ if __name__ == '__main__':
 
     # Save train/valid losses as well
     pickle.dump((train_losses, valid_losses), open("model.losses.p", "wb"))
+    pickle.dump((depth, width), open("model.config.p", "wb"))
 
     # Save loss curve figure
     plot_loss_curves(train_losses, valid_losses)

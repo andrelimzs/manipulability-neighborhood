@@ -16,102 +16,88 @@ from differentiable_robot_model.robot_model import DifferentiableRobotModel, Dif
 from Manipulability import *
 from learn_manipulability import MLP
 
+def plot_manipulability_surface(robot, ee_link, joint_config, filename=None, N=20):
+    # Retrieve joint limits
+    robot_limits = robot.get_joint_limits()
+    upper_limit = torch.tensor([x['upper'] for x in robot_limits])
+    lower_limit = torch.tensor([x['lower'] for x in robot_limits])
+
+    # Convert joint_space config into regular grid to plot
+    #   Set the config as a list of strs
+    #   [ z (zero), l (linspace), r (random) ]
+    joint_space = []
+    space_indices = []
+    for i, config in enumerate(joint_config):
+        if config == 'z':
+            joint_space.append(torch.zeros(1))
+        elif config == 'l':
+            joint_space.append(torch.linspace(lower_limit[i], upper_limit[i], N))
+            space_indices.append(i)
+        elif config == 'r':
+            joint_space.append(torch.rand(1) * (upper_limit[i] - lower_limit[i]) + lower_limit[i])
+
+    # Form X of shape (N,7)
+    X = torch.cartesian_prod(*joint_space)
+
+    # Compute groundtruth MN
+    y_true = compute_manipulability_neighborhood(robot, ee_link, X)
+
+    # Evaluate model
+    with torch.no_grad():
+        model.eval()
+        y_pred = model(X)
+        model.train()
+
+    fig = plt.figure()
+    ax = plt.axes(projection='3d')
+
+    # Get x/y axes from joint_config
+    xdata = X[:,space_indices[0]]
+    ydata = X[:,space_indices[1]]
+
+    # Surface plot for prediction
+    ax.plot_trisurf(xdata, ydata, y_pred.cpu(),
+        cmap='viridis',
+        edgecolor=None,
+        alpha=0.9,
+    )
+    # Scatter for true values
+    ax.scatter(xdata, ydata, y_true.cpu(),
+        cmap='viridis'
+    )
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("MN")
+    
+    # Save figures
+    if filename:
+        plt.savefig(filename, dpi=300)
+
+
 if __name__ == '__main__':
     # Get arguments
     import argparse
     parser = argparse.ArgumentParser(description='Generate manipulability neighborhood dataset')
-    parser.add_argument("-m", "--model", type=str, help="Model to load", default='model.pt')
+    parser.add_argument("-m", "--model", type=str, help="Model to load", default='model')
     args = parser.parse_args()
 
     # Define robot model
     robot = DifferentiableFrankaPanda()
     ee_link = "panda_virtual_ee_link"
 
-    # Retrieve joint limits
-    robot_limits = robot.get_joint_limits()
-    upper_limit = torch.tensor([x['upper'] for x in robot_limits])
-    lower_limit = torch.tensor([x['lower'] for x in robot_limits])
-
     # Load model
     device = 'cpu'
-    depth = 8
-    width = 50
+    depth, width = pickle.load(open(f"{args.model}.config.p", "rb"))
     model = MLP(depth, width).to(device)
-    model.load_state_dict(torch.load(args.model))
+    model.load_state_dict(torch.load(f"{args.model}.pt"))
 
-    # Plot
-    # Form X of shape (N,7)
-    X = torch.cartesian_prod(
-        torch.zeros(1),
-        torch.linspace(lower_limit[1], upper_limit[1], 20),
-        torch.rand(1) * (upper_limit[2] - lower_limit[2]) + lower_limit[2],
-        torch.linspace(lower_limit[3], upper_limit[3], 20),
-        torch.zeros(1),
-        torch.zeros(1),
-        torch.zeros(1),
-    )
+    # Plot MN over joints 2 and 4
+    joint_config = ['z', 'l', 'r', 'l', 'z', 'z', 'z']
+    plot_manipulability_surface(robot, ee_link, joint_config, 'surface1.png')
 
-    # Compute groundtruth MN
-    y_true = compute_manipulability_neighborhood(robot, ee_link, X)
+    # Plot MN over joints 3 and 6
+    joint_config = ['z', 'z', 'l', 'r', 'z', 'l', 'z']
+    plot_manipulability_surface(robot, ee_link, joint_config, 'surface2.png')
 
-    # Evaluate model
-    with torch.no_grad():
-        model.eval()
-        y_pred = model(X)
-        model.train()
-
-    fig = plt.figure()
-    ax = plt.axes(projection='3d')
-
-    xdata = X[:,1]
-    ydata = X[:,3]
-    ax.plot_trisurf(xdata, ydata, y_pred.cpu(),
-        cmap='viridis',
-        edgecolor=None
-    )
-    ax.scatter(xdata, ydata, y_true.cpu(),
-        cmap='viridis'
-    )
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_zlabel("MN")
-
-    plt.show()
-
-    # Form X of shape (N,7)
-    X = torch.cartesian_prod(
-        torch.zeros(1),
-        torch.zeros(1),
-        torch.linspace(lower_limit[2], upper_limit[2], 20),
-        torch.rand(1) * (upper_limit[3] - lower_limit[3]) + lower_limit[2],
-        torch.zeros(1),
-        torch.linspace(lower_limit[5], upper_limit[5], 20),
-        torch.zeros(1),
-    )
-
-    # Compute groundtruth MN
-    y_true = compute_manipulability_neighborhood(robot, ee_link, X)
-
-    # Evaluate model
-    with torch.no_grad():
-        model.eval()
-        y_pred = model(X)
-        model.train()
-
-    fig = plt.figure()
-    ax = plt.axes(projection='3d')
-
-    xdata = X[:,2]
-    ydata = X[:,5]
-    ax.plot_trisurf(xdata, ydata, y_pred.cpu(),
-        cmap='viridis',
-        edgecolor=None
-    )
-    ax.scatter(xdata, ydata, y_true.cpu(),
-        cmap='viridis'
-    )
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_zlabel("MN")
-
+    # Show now
     plt.show()
