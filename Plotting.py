@@ -20,7 +20,7 @@ if __name__ == '__main__':
     # Get arguments
     import argparse
     parser = argparse.ArgumentParser(description='Generate manipulability neighborhood dataset')
-    parser.add_argument("-m", "--model", type=str, help="Model to load", default='model.pt')
+    parser.add_argument("-m", "--model", type=str, help="Model to load", default='model')
     args = parser.parse_args()
 
     # Define robot model
@@ -34,10 +34,9 @@ if __name__ == '__main__':
 
     # Load model
     device = 'cpu'
-    depth = 8
-    width = 50
+    depth, width = pickle.load(open(f"{args.model}.config.p", "rb"))
     model = MLP(depth, width).to(device)
-    model.load_state_dict(torch.load(args.model))
+    model.load_state_dict(torch.load(f"{args.model}.pt"))
 
     # Plot
     # Form X of shape (N,7)

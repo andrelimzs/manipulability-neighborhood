@@ -15,8 +15,9 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser(description='Generate manipulability neighborhood dataset')
-    parser.add_argument("-trainN", type=int, help="Number of samples to generate", default=1000000)
-    parser.add_argument("-validN", type=int, help="Number of samples to generate", default=2000)
+    parser.add_argument("--trainN", type=int, help="Number of samples to generate", default=1000000)
+    parser.add_argument("--validN", type=int, help="Number of samples to generate", default=2000)
+    parser.add_argument("-o", '--output', type=str, help="File to save to", default='dataset.npz')
     args = parser.parse_args()
 
     print(f"Generating {args.trainN} training samples and {args.validN} validation samples")
@@ -38,7 +39,7 @@ if __name__ == '__main__':
     print(f"Completed in {toc-tic:.1f} s")
 
     # Save to npz
-    np.savez('Data/dataset.npz',
+    np.savez(f'Data/{args.output}',
          X_train=X_train.numpy(),
          y_train=y_train.numpy(),
          X_valid=X_valid.numpy(),
