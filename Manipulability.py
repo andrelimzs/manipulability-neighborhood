@@ -51,7 +51,31 @@ def compute_manipulability_index(robot, ee_link, q):
 
     return MI
 
-def get_neighborhood(x, mag=np.deg2rad(0.1)):
+def get_approximate_neighborhood(q_points, mag=np.deg2rad(0.1)):
+    """Compute an (approximate) neighborhood of points about a configuration in joint space
+
+    Approximate by independently perturbing each joint angle, instead of
+        computing the cartesian product of all perturbations
+    
+    Args
+        q_points (torch.tensor): Point
+        
+    Returns
+        out (list(torch.tensor)): List of neighbors (each set of neighbors is a tensor)
+    """
+    out = []
+    for q in q_points:
+        neighborhood = []
+        for joint in range(1,7):
+            for delta in [-1, 1]:
+                tmp = q.clone()
+                # q_points is (N x 7)
+                tmp[joint] += delta * mag
+                neighborhood.append(tmp)
+        out.append(torch.stack(neighborhood, 0))
+    return out
+
+def get_approximate_neighborhood(q_points, mag=np.deg2rad(0.1)):
     """Compute a neighborhood of points about a configuration in joint space
     
     Args
@@ -61,12 +85,12 @@ def get_neighborhood(x, mag=np.deg2rad(0.1)):
         out (list(torch.tensor)): List of neighbors (each set of neighbors is a tensor)
     """
     out = []
-    for q in x:
+    for q in q_points:
         neighborhood = []
         for joint in range(1,7):
             for delta in [-1, 1]:
                 tmp = q.clone()
-                # x is (N x 7)
+                # q_points is (N x 7)
                 tmp[joint] += delta * mag
                 neighborhood.append(tmp)
         out.append(torch.stack(neighborhood, 0))
@@ -97,8 +121,10 @@ def compute_manipulability_neighborhood(robot, ee_link, q_points):
     return MN
 
 def generate_N_samples(robot, ee_link, upper_limit, lower_limit, N):
+    soboleng = torch.quasirandom.SobolEngine(dimension=7)
+
     # Generate N samples of the manipulability neighborhood
-    q = torch.rand(N,7) * (upper_limit - lower_limit) + lower_limit
+    q = soboleng.draw(N) * (upper_limit - lower_limit) + lower_limit
 
     # Return X(q) and y(MN)
     return q, compute_manipulability_neighborhood(robot, ee_link, q)
