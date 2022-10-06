@@ -75,25 +75,22 @@ def get_approximate_neighborhood(q_points, mag=np.deg2rad(0.1)):
         out.append(torch.stack(neighborhood, 0))
     return out
 
-def get_approximate_neighborhood(q_points, mag=np.deg2rad(0.1)):
+def get_neighborhood(q_points, N=10, mag=np.deg2rad(0.1)):
     """Compute a neighborhood of points about a configuration in joint space
+
+    The neighborhood is the cartesian product of all joint angle perturbations
     
     Args
-        x (torch.tensor): Point
+        q_points (torch.tensor): Point
         
     Returns
         out (list(torch.tensor)): List of neighbors (each set of neighbors is a tensor)
     """
     out = []
     for q in q_points:
-        neighborhood = []
-        for joint in range(1,7):
-            for delta in [-1, 1]:
-                tmp = q.clone()
-                # q_points is (N x 7)
-                tmp[joint] += delta * mag
-                neighborhood.append(tmp)
-        out.append(torch.stack(neighborhood, 0))
+        tmp = [ torch.linspace(-mag, mag, N) + q[i] for i in range(1,7) ]
+        neighborhood = torch.cartesian_prod(torch.zeros(1), *tmp)
+        out.append(neighborhood)
     return out
 
 def compute_manipulability_neighborhood(robot, ee_link, q_points):
