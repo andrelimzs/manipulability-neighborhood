@@ -16,6 +16,23 @@ from differentiable_robot_model.robot_model import DifferentiableRobotModel, Dif
 from Manipulability import *
 from learn_manipulability import MLP
 
+def plot_losses(train_losses, valid_losses):
+    train = train_losses
+    valid = valid_losses
+
+    # train = np.log(train_losses)
+    # valid = np.log(valid_losses)
+    
+    # Plot log curve
+    fig = plt.figure()
+    plt.plot(train, label='train')
+    plt.plot(valid, label='valid')
+
+    plt.title("Losses")
+    plt.grid()
+    plt.legend()
+    plt.ylim(0, 0.002)
+
 def plot_manipulability_surface(robot, ee_link, joint_config, filename=None, N=20):
     # Retrieve joint limits
     robot_limits = robot.get_joint_limits()
@@ -73,12 +90,12 @@ def plot_manipulability_surface(robot, ee_link, joint_config, filename=None, N=2
     if filename:
         plt.savefig(filename, dpi=300)
 
-
 if __name__ == '__main__':
     # Get arguments
     import argparse
     parser = argparse.ArgumentParser(description='Generate manipulability neighborhood dataset')
     parser.add_argument("-m", "--model", type=str, help="Model to load", default='model')
+    parser.add_argument("--loss", action='store_true')
     args = parser.parse_args()
 
     # Define robot model
@@ -90,6 +107,11 @@ if __name__ == '__main__':
     depth, width = pickle.load(open(f"{args.model}.config.p", "rb"))
     model = MLP(depth, width).to(device)
     model.load_state_dict(torch.load(f"{args.model}.pt"))
+
+    # Plot loss curves
+    if args.loss:
+        train_losses, valid_losses = pickle.load(open(f"{args.model}.losses.p", "rb"))
+        plot_losses(train_losses, valid_losses)
 
     # Plot MN over joints 2 and 4
     joint_config = ['z', 'l', 'r', 'l', 'z', 'z', 'z']

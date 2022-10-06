@@ -63,7 +63,7 @@ def training_loop(model, num_epochs, patience,
     
     # Define loss and optimizer
     criterion = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
     # optimizer = torch.optim.AdamW(model.parameters(), lr=0.001)
     # optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
 
@@ -119,13 +119,13 @@ def training_loop(model, num_epochs, patience,
     return model, train_losses, valid_losses
 
 def plot_loss_curves(train_losses, valid_losses, save_plot='loss_curve.png'):
-    fig = plt.figure(figsize=(16,9), dpi=200)
+    fig = plt.figure()
     plt.plot(train_losses)
     plt.plot(valid_losses)
     plt.title("Losses")
     plt.grid()
     if save_plot:
-        plt.savefig(save_plot)
+        plt.savefig(save_plot, dpi=300)
 
 if __name__ == '__main__':
     # Get arguments
@@ -145,19 +145,20 @@ if __name__ == '__main__':
 
     # Instantiate model
     device = 'cpu'
-    depth = 4
+    depth = 16
     width = 50
     model = MLP(depth, width).to(device)
     print(f"depth = {depth}, width = {width}")
 
-    # Print model summary
-    print(model)
+    # # Print model summary
+    # print(model)
 
     # Load model if specified
     if args.model:
         print(f"Loaded model from {args.model}")
-        model.load_state_dict(torch.load(args.model))
-        (train_losses, valid_losses) = pickle.load(open("model.losses.p", "rb"))
+        model.load_state_dict(torch.load(f"{args.model}.pt"))
+        (train_losses, valid_losses) = pickle.load(open(f"{args.model}.losses.p", "rb"))
+        print(f"Starting training from epoch {len(train_losses)}")
     else:
         train_losses = []
         valid_losses = []
@@ -172,11 +173,11 @@ if __name__ == '__main__':
     print(f"Validation loss: {valid_losses[-1]:0.1e}")
 
     # Save model
-    torch.save(model.state_dict(), "model.pt")
+    torch.save(model.state_dict(), f"{args.model}.pt")
 
     # Save train/valid losses as well
-    pickle.dump((train_losses, valid_losses), open("model.losses.p", "wb"))
-    pickle.dump((depth, width), open("model.config.p", "wb"))
+    pickle.dump((train_losses, valid_losses), open(f"{args.model}.losses.p", "wb"))
+    pickle.dump((depth, width), open(f"{args.model}.config.p", "wb"))
 
     # Save loss curve figure
     plot_loss_curves(train_losses, valid_losses)
