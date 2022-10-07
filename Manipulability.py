@@ -75,7 +75,7 @@ def get_approximate_neighborhood(q_points, mag=np.deg2rad(0.1)):
         out.append(torch.stack(neighborhood, 0))
     return out
 
-def get_neighborhood(q_points, N=10, mag=np.deg2rad(0.1)):
+def get_neighborhood(q_points, num_neighbors=10, mag=np.deg2rad(0.1)):
     """Compute a neighborhood of points about a configuration in joint space
 
     The neighborhood is the cartesian product of all joint angle perturbations
@@ -86,14 +86,19 @@ def get_neighborhood(q_points, N=10, mag=np.deg2rad(0.1)):
     Returns
         out (list(torch.tensor)): List of neighbors (each set of neighbors is a tensor)
     """
+    # Calculate the 7D perturbations (N^6, 7)
+    tmp = [torch.zeros(1)] + [ torch.linspace(-mag, mag, num_neighbors) for i in range(1,7) ]
+    perturbations = torch.cartesian_prod(*tmp)
+
     out = []
     for q in q_points:
-        tmp = [ torch.linspace(-mag, mag, N) + q[i] for i in range(1,7) ]
-        neighborhood = torch.cartesian_prod(torch.zeros(1), *tmp)
+        # Broadcast perturbation (N^6, 7) with q (1,7)
+        neighborhood = perturbations + q
         out.append(neighborhood)
+    
     return out
 
-def compute_manipulability_neighborhood(robot, ee_link, q_points):
+def compute_manipulability_neighborhood(robot, ee_link, q_points, num_neighbors=10):
     """Compute the manipulability neighborhood (MN) as the weighted sum of nearby MIs
     
     Define the manipulability neighborhood as the (distance) weighted sum of
@@ -105,23 +110,20 @@ def compute_manipulability_neighborhood(robot, ee_link, q_points):
         MI (torch.tensor): Tensor (1) manipulability neighborhood
     """
     # Generate neighborhood of points
-    q_neighbors = get_neighborhood(q_points)
+    q_neighbors = get_neighborhood(q_points, num_neighbors=num_neighbors)
     
     # Compute MN for each point
     MN = []
-    for q in q_neighbors:
+    for q, neighbors in zip(q_points, q_neighbors):
         # MI Neighborhood is the sum of MIs for the configurations in the neighborhood
-        MN.append(torch.sum(compute_manipulability_index(robot, ee_link, q)))
+        MI = compute_manipulability_index(robot, ee_link, neighbors)
+
+        # Compute MN as the convolution of MI with distance kernel
+        distance = torch.linalg.vector_norm( neighbors - q, dim=1 )
+
+        # Weigh by distance
+        MN.append(torch.sum(MI * distance))
     
     # Stack list into tensor and return
     MN = torch.stack(MN)
     return MN
-
-def generate_N_samples(robot, ee_link, upper_limit, lower_limit, N):
-    soboleng = torch.quasirandom.SobolEngine(dimension=7)
-
-    # Generate N samples of the manipulability neighborhood
-    q = soboleng.draw(N) * (upper_limit - lower_limit) + lower_limit
-
-    # Return X(q) and y(MN)
-    return q, compute_manipulability_neighborhood(robot, ee_link, q)
